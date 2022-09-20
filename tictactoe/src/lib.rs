@@ -369,6 +369,7 @@ impl<S: HasStateApi> State<S> {
 
     fn create_game(&mut self, address: AccountAddress) {
         self.games.insert(self.ctr, Game::new(address));
+        self.ctr += 1;
     }
 
     fn join(&mut self, game_id: u64, new_player: Player) -> ContractResult<()> {
