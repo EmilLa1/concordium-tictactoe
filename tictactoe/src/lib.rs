@@ -414,7 +414,6 @@ struct MakeMoveParams {
     contract = "tictactoe",
     name = "make_move",
     parameter = "MakeMoveParams",
-    return_value = "bool",
     mutable
 )]
 fn contract_make_move<S: HasStateApi>(
