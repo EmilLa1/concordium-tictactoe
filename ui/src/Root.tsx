@@ -4,6 +4,9 @@ import { state, State } from './model';
 import { Board } from './Board';
 
 import { detectConcordiumProvider } from '@concordium/browser-wallet-api-helpers';
+import GameState from './GameState';
+
+const CONTRACT_ADDRESS = {index: 1075n, subindex: 0n};
 
 
 export default function Root() {
@@ -15,7 +18,7 @@ export default function Root() {
         setIsConnected(Boolean(accountAddress));
     }, []);
 
-    const stateValue: State = useMemo(() => ({ isConnected }), [isConnected]);
+    const stateValue: State = useMemo(() => ({ isConnected, contractAddress: CONTRACT_ADDRESS}), [isConnected, CONTRACT_ADDRESS]);
 
     useEffect(() => {
         detectConcordiumProvider()
@@ -27,16 +30,16 @@ export default function Root() {
                 );
                 provider.getMostRecentlySelectedAccount().then(handleGetAccount);
             })
-    }
-    );
+            .catch(() => setIsConnected(false));
+    }, []);
 
-    const [cells, updateCells] = useState<string[]>(["","","","","","","","",""]);
+    // const [cells, updateCells] = useState<string[]>(["", "", "", "", "", "", "", "", ""]);
 
-    function onCellClick(i: number) {
-        let clls = [...cells];
-        clls[i] = "X";
-        updateCells(clls);
-    }
+    // function onCellClick(i: number) {
+    //     let clls = [...cells];
+    //     clls[i] = "X";
+    //     updateCells(clls);
+    // }
 
     return (
         <state.Provider value={stateValue}>
@@ -54,7 +57,7 @@ export default function Root() {
                     )}
                 </div>
                 <div>Hello world!</div>
-                <Board cells={cells} onCellClick={onCellClick}></Board>
+                <GameState gameId={0n}></GameState>
             </main>
         </state.Provider>
     )

@@ -72,6 +72,28 @@ pub struct Game {
     pub circle: Option<Player>,
 }
 
+impl From<Game> for u32 {
+    fn from(g : Game) -> Self {
+        let mut state_bits = match g.game_state {
+            GameState::AwaitingOpponent => 0x00000000,
+            GameState::InProgress(Player::Cross(_)) => 0x00000001,
+            GameState::InProgress(Player::Circle(_)) => 0x00000002,
+            GameState::Finished(None) => 0x00000003,
+            GameState::Finished(Some(Player::Cross(_))) => 0x00000004,
+            GameState::Finished(Some(Player::Circle(_))) => 0x00000005,
+        };
+        for (index, cell) in g.board.0.iter().enumerate() {
+            let cell_bits = match cell {
+                Cell::Empty => 0,
+                Cell::Occupied(Player::Cross(_)) => 1,
+                Cell::Occupied(Player::Circle(_)) => 2,
+            };
+            state_bits |= cell_bits << (4 + 2 * index);
+        };
+        state_bits
+    }
+}
+
 impl Game {
     /// Create a new game with an initiator.
     fn new(initiator: AccountAddress) -> Self {
@@ -274,6 +296,19 @@ fn tictactoe_view<S: HasStateApi>(
         games.insert(*idx, game.clone());
     }
     Ok(ViewState { games })
+}
+
+#[receive(contract = "tictactoe", name = "game_view")]
+fn tictactoe_game_view<S: HasStateApi>(
+    ctx: &impl HasReceiveContext,
+    host: &impl HasHost<State<S>, StateApiType = S>,
+) -> ReceiveResult<u32> {
+    // Parse the 'JoinParams'
+    let params: JoinParams = ctx.parameter_cursor().get()?;
+
+    let the_state = host.state();
+    let the_game = the_state.games.get(&params.game_id).ok_or(CustomContractError::InvalidGameId)?;
+    Ok(the_game.clone().into())
 }
 
 /// The init function of the contract
