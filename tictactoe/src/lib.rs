@@ -73,7 +73,7 @@ pub struct Game {
 }
 
 impl From<Game> for u32 {
-    fn from(g : Game) -> Self {
+    fn from(g: Game) -> Self {
         let mut state_bits = match g.game_state {
             GameState::AwaitingOpponent => 0x00000000,
             GameState::InProgress(Player::Cross(_)) => 0x00000001,
@@ -89,7 +89,7 @@ impl From<Game> for u32 {
                 Cell::Occupied(Player::Circle(_)) => 2,
             };
             state_bits |= cell_bits << (4 + 2 * index);
-        };
+        }
         state_bits
     }
 }
@@ -307,8 +307,46 @@ fn tictactoe_game_view<S: HasStateApi>(
     let params: JoinParams = ctx.parameter_cursor().get()?;
 
     let the_state = host.state();
-    let the_game = the_state.games.get(&params.game_id).ok_or(CustomContractError::InvalidGameId)?;
+    let the_game = the_state
+        .games
+        .get(&params.game_id)
+        .ok_or(CustomContractError::InvalidGameId)?;
     Ok(the_game.clone().into())
+}
+
+#[receive(contract = "tictactoe", name = "game_view_players")]
+fn tictactoe_game_view_players<S: HasStateApi>(
+    ctx: &impl HasReceiveContext,
+    host: &impl HasHost<State<S>, StateApiType = S>,
+) -> ReceiveResult<Vec<u8>> {
+    let params: JoinParams = ctx.parameter_cursor().get()?;
+    let the_game = host
+        .state()
+        .games
+        .get(&params.game_id)
+        .ok_or(CustomContractError::InvalidGameId)?;
+    let mut out: Vec<u8> = vec![];
+    // don't judge - not much time left when I realized my stupidity.
+    match the_game.cross {
+        Player::Cross(p) => {
+            out.extend_from_slice(&p.0);
+        }
+        Player::Circle(p) => {
+            out.extend_from_slice(&p.0);
+        }
+    }
+    match the_game.circle {
+        Some(p) => match p {
+            Player::Cross(p) => {
+                out.extend_from_slice(&p.0);
+            }
+            Player::Circle(p) => {
+                out.extend_from_slice(&p.0);
+            }
+        },
+        None => (),
+    }
+    Ok(out)
 }
 
 /// The init function of the contract
