@@ -79,6 +79,12 @@ enum Action {
         #[structopt(long, help = "The contract address")]
         address: ContractAddress,
     },
+    ViewAccounts {
+        #[structopt(long, help = "The game to join")]
+        the_game: u64,
+        #[structopt(long, help = "The contract address")]
+        address:  ContractAddress,
+    },
 }
 
 #[derive(Serialize)]
@@ -260,7 +266,7 @@ async fn main() -> anyhow::Result<()> {
                 nonce,
                 expiry,
                 payload,
-                1000000u64.into(),
+                10000u64.into(),
             );
             let item = BlockItem::AccountTransaction(tx);
             // submit the transaction to the chain
@@ -289,6 +295,47 @@ async fn main() -> anyhow::Result<()> {
                         concordium_rust_sdk::types::smart_contracts::InvokeContractResult::Success { return_value, events: _, used_energy: _ } => {
                             if let Some(view_value) = return_value {
                                 let view_state: ViewState = from_bytes(&view_value.value)?;
+                                println!("{:?}",view_state);
+                            }
+                        },
+                        concordium_rust_sdk::types::smart_contracts::InvokeContractResult::Failure { return_value: _, reason, used_energy: _ } => {
+                            eprintln!("Failed invoking contract {:?}", reason);
+                        },
+                    }
+                }
+                Err(err) => eprintln!("Could not invoke contract: {}", err),
+            }
+        }
+        Action::ViewAccounts {
+            the_game,
+            address,
+        } => {
+            let params = JoinParams {
+                game_id: the_game,
+            };
+
+            let message = Parameter::from(
+                concordium_rust_sdk::types::smart_contracts::concordium_contracts_common::to_bytes(
+                    &params,
+                ),
+            );
+            let ctx = concordium_rust_sdk::types::smart_contracts::ContractContext {
+                invoker:   None,
+                contract:  address,
+                amount:    Amount::zero(),
+                method:    OwnedReceiveName::new_unchecked(
+                    "tictactoe.game_view_players".to_string(),
+                ),
+                parameter: message,
+                energy:    10000000u64.into(),
+            };
+
+            match client.invoke_contract(&consensus_info.last_finalized_block, &ctx).await {
+                Ok(res) => {
+                    match res {
+                        concordium_rust_sdk::types::smart_contracts::InvokeContractResult::Success { return_value, events: _, used_energy: _ } => {
+                            if let Some(view_value) = return_value {
+                                let view_state: Vec<u8> = from_bytes(&view_value.value)?;
                                 println!("{:?}",view_state);
                             }
                         },
