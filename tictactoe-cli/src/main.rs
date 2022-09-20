@@ -8,17 +8,16 @@ use concordium_rust_sdk::{
     types::{
         smart_contracts::{
             concordium_contracts_common::{
-                Amount, ContractAddress, OwnedContractName, OwnedReceiveName, Serial,
+                from_bytes, Amount, ContractAddress, OwnedContractName, OwnedReceiveName, Serialize,
             },
             ModuleRef, Parameter, WasmModule,
         },
         transactions::{send, BlockItem, InitContractPayload, UpdateContractPayload},
-        AccountInfo, Energy,
+        AccountInfo,
     },
 };
 use std::path::PathBuf;
 use structopt::*;
-use thiserror::Error;
 
 #[derive(StructOpt)]
 struct App {
@@ -82,12 +81,12 @@ enum Action {
     },
 }
 
-#[derive(Serial)]
+#[derive(Serialize)]
 struct JoinParams {
     game_id: u64,
 }
 
-#[derive(Serial)]
+#[derive(Serialize)]
 struct MakeMoveParams {
     game_id:  u64,
     the_move: u64,
@@ -123,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
         Action::Deploy {
             path,
         } => {
+            println!("DEPLOYING TIC TAC TOE");
             let bytes = std::fs::read(path)?;
             let module: WasmModule = std::io::Cursor::new(bytes).get()?;
             let mod_ref = module.get_module_ref();
@@ -139,6 +139,7 @@ async fn main() -> anyhow::Result<()> {
         Action::Init {
             module_ref: mod_ref,
         } => {
+            println!("Initializing TIC TAC TOE");
             let param = Parameter::default();
             let payload = InitContractPayload {
                 amount: Amount::zero(),
@@ -279,11 +280,62 @@ async fn main() -> anyhow::Result<()> {
                 amount:    Amount::zero(),
                 method:    OwnedReceiveName::new_unchecked("tictactoe.view".to_string()),
                 parameter: message,
-                energy:    0u64.into(),
+                energy:    10000000u64.into(),
             };
-            client.invoke_contract(&consensus_info.last_finalized_block, &ctx).await?;
+
+            match client.invoke_contract(&consensus_info.last_finalized_block, &ctx).await {
+                Ok(res) => {
+                    match res {
+                        concordium_rust_sdk::types::smart_contracts::InvokeContractResult::Success { return_value, events: _, used_energy: _ } => {
+                            if let Some(view_value) = return_value {
+                                let view_state: ViewState = from_bytes(&view_value.value)?;
+                                println!("{:?}",view_state);
+                            }
+                        },
+                        concordium_rust_sdk::types::smart_contracts::InvokeContractResult::Failure { return_value: _, reason, used_energy: _ } => {
+                            eprintln!("Failed invoking contract {:?}", reason);
+                        },
+                    }
+                }
+                Err(err) => eprintln!("Could not invoke contract: {}", err),
+            }
         }
     };
 
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct ViewState {
+    pub games: std::collections::BTreeMap<u64, Game>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Copy)]
+pub enum Player {
+    Cross(AccountAddress),
+    Circle(AccountAddress),
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Clone, Copy)]
+pub enum GameState {
+    AwaitingOpponent,
+    InProgress(Player),
+    Finished(Option<Player>), // None if it was a draw, otherwise it contains the winning player.
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+enum Cell {
+    Empty,
+    Occupied(Player),
+}
+#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
+pub struct Board([Cell; 9]);
+
+/// A game of tic tac toe!
+#[derive(Debug, PartialEq, Eq, Serialize, Clone)]
+pub struct Game {
+    pub game_state: GameState,
+    pub board:      Board,
+    pub cross:      Player,
+    pub circle:     Option<Player>,
 }
