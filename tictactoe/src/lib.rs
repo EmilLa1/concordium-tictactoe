@@ -106,7 +106,7 @@ impl Game {
         );
         // A player can only make valid move.
         ensure!(
-            Self::is_valid_move(&self, &the_move),
+            Self::is_valid_move(self, &the_move),
             CustomContractError::InvalidMove
         );
 
@@ -116,7 +116,7 @@ impl Game {
 
         // If the game is not yet finished we let the other player
         // make their move otherwise we mark the game as finished with the outcome.
-        if let (true, result) = self.is_game_finished(&player, &the_move) {
+        if let (true, result) = self.is_game_finished(player, &the_move) {
             self.borrow_mut().game_state = GameState::Finished(result)
         } else {
             self.borrow_mut().game_state = match player {
