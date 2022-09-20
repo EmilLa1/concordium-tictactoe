@@ -18,7 +18,7 @@ struct State<S> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Copy)]
-enum Player {
+pub enum Player {
     Cross(AccountAddress),
     Circle(AccountAddress),
 }
@@ -36,10 +36,10 @@ impl From<&Player> for Cell {
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Clone, Copy)]
-enum GameState {
+pub enum GameState {
     AwaitingOpponent,
     InProgress(Player),
-    Finished(Option<Player>), // None if it was a draw, otherwise it contains the winning party.
+    Finished(Option<Player>), // None if it was a draw, otherwise it contains the winning player.
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
@@ -66,10 +66,10 @@ impl Default for Board {
 /// A game of tic tac toe!
 #[derive(Debug, PartialEq, Eq, Serialize)]
 struct Game {
-    game_state: GameState,
-    board: Board,
-    cross: Player,
-    circle: Option<Player>,
+    pub game_state: GameState,
+    pub board: Board,
+    pub cross: Player,
+    pub circle: Option<Player>,
 }
 
 impl Game {
@@ -85,7 +85,10 @@ impl Game {
 
     fn join(&mut self, new_player: Player) -> ContractResult<()> {
         // A player can only join a game where there's a spot open!
-        ensure!(self.game_state == GameState::AwaitingOpponent, CustomContractError::InvalidJoin);
+        ensure!(
+            self.game_state == GameState::AwaitingOpponent,
+            CustomContractError::InvalidJoin
+        );
         // We don't allow people to play against themself.
         ensure!(self.cross != new_player, CustomContractError::InvalidJoin);
         // Let the player join and set it in progress.
@@ -97,9 +100,15 @@ impl Game {
 
     fn make_move(&mut self, player: &Player, the_move: PutMove) -> ContractResult<()> {
         // A player can only make a move if its their turn.
-        ensure!(Self::is_it_me(self.game_state, player), CustomContractError::NotMyTurn);
+        ensure!(
+            Self::is_it_me(self.game_state, player),
+            CustomContractError::NotMyTurn
+        );
         // A player can only make valid move.
-        ensure!(Self::is_valid_move(&self, &the_move), CustomContractError::InvalidMove);
+        ensure!(
+            Self::is_valid_move(&self, &the_move),
+            CustomContractError::InvalidMove
+        );
 
         // Update the board.
         // This is hideous - we can make it better.
@@ -157,12 +166,14 @@ impl Game {
             return (true, winner);
         } else if let (true, winner) = self.vertical_check(player, the_move) {
             return (true, winner);
-        } else if *self.board.0.get(4).unwrap() == Cell::Occupied(*player) 
-            && self.diagonal_check(player){ // todo: ideally 'the_move' could be used for only making one check in 'diagonal_check'.
+        } else if *self.board.0.get(4).unwrap() == Cell::Occupied(*player)
+            && self.diagonal_check(player)
+        {
+            // todo: ideally 'the_move' could be used for only making one check in 'diagonal_check'.
             // We only check the diagonal if the player who made a move controls the center of the board.
             // check the diagonals
-            return (true, Some(*player))
-        } else if self.is_draw(){
+            return (true, Some(*player));
+        } else if self.is_draw() {
             (true, None)
         } else {
             (false, None)
@@ -195,9 +206,9 @@ impl Game {
         (x, Some(*player))
     }
 
-    /// Checks whether the player has at least two opposite corners. 
+    /// Checks whether the player has at least two opposite corners.
     /// If that is the case, then the player has won as it is
-    /// a precondition to call this function that the player 
+    /// a precondition to call this function that the player
     /// controls the middle.
     /// todo: this is ugly
     fn diagonal_check(&self, player: &Player) -> bool {
@@ -209,7 +220,7 @@ impl Game {
         return ul && lr || ur && ll;
     }
 
-    /// Checks whether every [Cell] is occupied or not. 
+    /// Checks whether every [Cell] is occupied or not.
     /// Note. This only makes sense in conjunction with the above checks carried
     /// out before this one.
     fn is_draw(&self) -> bool {
@@ -231,6 +242,8 @@ enum CustomContractError {
     InvalidJoin,
     NotMyTurn,
     InvalidMove,
+    NotAHuman,
+    InvalidGameState,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -253,6 +266,89 @@ impl Index<PutMove> for Board {
 
 type ContractResult<A> = Result<A, CustomContractError>;
 
+/// The init function of the contract
+#[init(contract = "tictactoe")]
+fn contract_init<S: HasStateApi>(
+    _ctx: &impl HasInitContext,
+    state_builder: &mut StateBuilder<S>,
+) -> InitResult<State<S>> {
+    // Create an empty state
+    Ok(State::empty(state_builder))
+}
+
+#[receive(contract = "tictactoe", name = "create_game", mutable)]
+fn contract_create<S: HasStateApi>(
+    ctx: &impl HasReceiveContext,
+    host: &mut impl HasHost<State<S>, StateApiType = S>,
+) -> ContractResult<()> {
+    match ctx.sender() {
+        Address::Account(addr) => {
+            let (state, _) = host.state_and_builder();
+            state.create_game(addr); // this is cross.
+            Ok(())
+        }
+        Address::Contract(_) => Err(CustomContractError::NotAHuman),
+    }
+}
+
+#[derive(Serialize, SchemaType)]
+struct JoinParams {
+    game_id: u64,
+}
+
+#[receive(
+    contract = "tictactoe",
+    name = "join_game",
+    parameter = "JoinParams",
+    return_value = "bool",
+    mutable
+)]
+fn contract_join<S: HasStateApi>(
+    ctx: &impl HasReceiveContext,
+    host: &mut impl HasHost<State<S>, StateApiType = S>,
+) -> ContractResult<()> {
+    // Parse the 'JoinParams'
+    let params: JoinParams = ctx.parameter_cursor().get()?;
+    // Get the sender of the transaction
+    match ctx.sender() {
+        Address::Account(addr) => {
+            let (state, _) = host.state_and_builder();
+            state.join(params.game_id, Player::Circle(addr))?;
+            Ok(())
+        }
+        // We only allow humans to play.
+        Address::Contract(_) => Err(CustomContractError::NotAHuman),
+    }
+}
+
+#[derive(Serialize, SchemaType)]
+struct MakeMoveParams {
+    game_id: u64,
+    the_move: u64,
+}
+
+#[receive(
+    contract = "tictactoe",
+    name = "make_move",
+    parameter = "MakeMoveParams",
+    return_value = "bool",
+    mutable
+)]
+fn contract_make_move<S: HasStateApi>(
+    ctx: &impl HasReceiveContext,
+    host: &mut impl HasHost<State<S>, StateApiType = S>,
+) -> ContractResult<()> {
+    match ctx.sender() {
+        Address::Account(addr) => {
+            let params: MakeMoveParams = ctx.parameter_cursor().get()?;
+            let (state, _) = host.state_and_builder();
+            let the_move = PutMove::new(params.the_move as usize);
+            state.make_move(params.game_id, &addr, the_move)
+        }
+        Address::Contract(_) => Err(CustomContractError::NotAHuman),
+    }
+}
+
 impl<S: HasStateApi> State<S> {
     fn empty(state_builder: &mut StateBuilder<S>) -> Self {
         State {
@@ -269,20 +365,33 @@ impl<S: HasStateApi> State<S> {
         if let Some(the_game) = &mut self.games.get_mut(&game_id) {
             the_game.join(new_player)
         } else {
-            return Err(CustomContractError::InvalidGameId);
+            Err(CustomContractError::InvalidGameId)
         }
     }
 
     fn make_move(
         &mut self,
         game_id: u64,
-        player: &Player,
+        player: &AccountAddress,
         the_move: PutMove,
     ) -> ContractResult<()> {
         if let Some(mut the_game) = self.games.get_mut(&game_id) {
-            the_game.make_move(player, the_move)
+            match the_game.game_state {
+                GameState::AwaitingOpponent => Err(CustomContractError::InvalidGameState),
+                GameState::InProgress(allowed_player) => match allowed_player {
+                    Player::Cross(addr) => {
+                        ensure!(addr == *player, CustomContractError::NotMyTurn);
+                        the_game.make_move(&allowed_player, the_move)
+                    }
+                    Player::Circle(addr) => {
+                        ensure!(addr == *player, CustomContractError::NotMyTurn);
+                        the_game.make_move(&allowed_player, the_move)
+                    }
+                },
+                GameState::Finished(_) => Err(CustomContractError::InvalidGameState),
+            }
         } else {
-            return Err(CustomContractError::InvalidGameId);
+            Err(CustomContractError::InvalidGameId)
         }
     }
 }
@@ -309,13 +418,22 @@ mod tests {
         claim!(game.join(CIRCLE).is_ok());
 
         // Cross starts in this game of tic tac toe!
-        claim_eq!(game.make_move(&CIRCLE, PutMove::new(0)), Err(CustomContractError::NotMyTurn));
+        claim_eq!(
+            game.make_move(&CIRCLE, PutMove::new(0)),
+            Err(CustomContractError::NotMyTurn)
+        );
         // When it's a players turn, they should be able to make a move.
         claim!(game.make_move(&CROSS, PutMove::new(0)).is_ok());
         // One is not allowed to make two consecutive moves!
-        claim_eq!(game.make_move(&CROSS, PutMove::new(0)), Err(CustomContractError::NotMyTurn));
+        claim_eq!(
+            game.make_move(&CROSS, PutMove::new(0)),
+            Err(CustomContractError::NotMyTurn)
+        );
         // one is not allowed to put a mark on top of each others
-        claim_eq!(game.make_move(&CIRCLE, PutMove::new(0)), Err(CustomContractError::InvalidMove));
+        claim_eq!(
+            game.make_move(&CIRCLE, PutMove::new(0)),
+            Err(CustomContractError::InvalidMove)
+        );
         // The game continues...
         claim!(game.make_move(&CIRCLE, PutMove::new(1)).is_ok());
         claim!(game.make_move(&CROSS, PutMove::new(3)).is_ok());
@@ -326,12 +444,15 @@ mod tests {
         claim_eq!(game.game_state, GameState::Finished(Some(CROSS)));
 
         // Polish this part. It is not only not Circles turn, the game is also finished!
-        claim_eq!(game.make_move(&CROSS, PutMove::new(8)), Err(CustomContractError::NotMyTurn));
+        claim_eq!(
+            game.make_move(&CROSS, PutMove::new(8)),
+            Err(CustomContractError::NotMyTurn)
+        );
 
         // Let's play a game... Horizontally that is..
         game = Game::new(INITIATOR);
         claim!(game.join(CIRCLE).is_ok());
-        
+
         claim!(game.make_move(&CROSS, PutMove::new(0)).is_ok());
         claim!(game.make_move(&CIRCLE, PutMove::new(3)).is_ok());
 
@@ -344,7 +465,7 @@ mod tests {
         // Let's win via the mid game'!
         game = Game::new(INITIATOR);
         claim!(game.join(CIRCLE).is_ok());
-        
+
         claim!(game.make_move(&CROSS, PutMove::new(0)).is_ok());
         claim!(game.make_move(&CIRCLE, PutMove::new(1)).is_ok());
 
