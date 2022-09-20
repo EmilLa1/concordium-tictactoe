@@ -17,7 +17,7 @@ struct State<S> {
     games: StateMap<GameId, Game, S>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Copy, SchemaType)]
 pub enum Player {
     Cross(AccountAddress),
     Circle(AccountAddress),
@@ -35,20 +35,20 @@ impl From<&Player> for Cell {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Serialize, Clone, Copy, SchemaType)]
 pub enum GameState {
     AwaitingOpponent,
     InProgress(Player),
     Finished(Option<Player>), // None if it was a draw, otherwise it contains the winning player.
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, SchemaType)]
 enum Cell {
     Empty,
     Occupied(Player),
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
+#[derive(Debug, Serialize, PartialEq, Eq, Clone, SchemaType)]
 pub struct Board([Cell; 9]);
 
 impl Board {
@@ -64,7 +64,7 @@ impl Default for Board {
 }
 
 /// A game of tic tac toe!
-#[derive(Debug, PartialEq, Eq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Clone, SchemaType)]
 pub struct Game {
     pub game_state: GameState,
     pub board: Board,
