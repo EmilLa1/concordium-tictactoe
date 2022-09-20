@@ -134,16 +134,16 @@ impl Game {
         // first check that the [Cell] is not occupied.
         match the_game.board.0.get(the_move.0).unwrap() {
             // should be safeish
-            Cell::Empty => return true,
-            Cell::Occupied(_) => return false,
+            Cell::Empty => true,
+            Cell::Occupied(_) => false,
         }
     }
 
     /// Return whether it's the players turn or not.
     fn is_it_me(state: GameState, player: &Player) -> bool {
         match state {
-            GameState::InProgress(p) => return p == *player,
-            _ => return false,
+            GameState::InProgress(p) => p == *player,
+            _ => false,
         }
     }
 
@@ -155,24 +155,17 @@ impl Game {
     /// board.
     /// todo: clean this mess up!
     fn is_game_finished(&self, player: &Player, the_move: &PutMove) -> (bool, Option<Player>) {
-        const MAGIC_NUM: usize = 3;
-        // Checks to carry out.
-        let mut vertical_check = true;
-        let diagonal_check = false;
-
-        let mut winner = Some(*player);
-
         if let (true, winner) = self.horizontal_check(player, the_move) {
-            return (true, winner);
+            (true, winner)
         } else if let (true, winner) = self.vertical_check(player, the_move) {
-            return (true, winner);
+            (true, winner)
         } else if *self.board.0.get(4).unwrap() == Cell::Occupied(*player)
             && self.diagonal_check(player)
         {
             // todo: ideally 'the_move' could be used for only making one check in 'diagonal_check'.
             // We only check the diagonal if the player who made a move controls the center of the board.
             // check the diagonals
-            return (true, Some(*player));
+            (true, Some(*player))
         } else if self.is_draw() {
             (true, None)
         } else {
