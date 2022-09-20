@@ -48,8 +48,8 @@ enum Cell {
     Occupied(Player),
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
-struct Board([Cell; 9]);
+#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
+pub struct Board([Cell; 9]);
 
 impl Board {
     fn new() -> Self {
@@ -64,8 +64,8 @@ impl Default for Board {
 }
 
 /// A game of tic tac toe!
-#[derive(Debug, PartialEq, Eq, Serialize)]
-struct Game {
+#[derive(Debug, PartialEq, Eq, Serialize, Clone)]
+pub struct Game {
     pub game_state: GameState,
     pub board: Board,
     pub cross: Player,
@@ -216,8 +216,7 @@ impl Game {
         let ur = *self.board.0.get(2).unwrap() == Cell::Occupied(*player);
         let ll = *self.board.0.get(6).unwrap() == Cell::Occupied(*player);
         let lr = *self.board.0.get(8).unwrap() == Cell::Occupied(*player);
-
-        return ul && lr || ur && ll;
+        ul && lr || ur && ll
     }
 
     /// Checks whether every [Cell] is occupied or not.
@@ -265,6 +264,24 @@ impl Index<PutMove> for Board {
 }
 
 type ContractResult<A> = Result<A, CustomContractError>;
+
+#[derive(Serialize, SchemaType)]
+pub struct ViewState {
+    pub games: collections::BTreeMap<u64, Game>,
+}
+
+#[receive(contract = "tictactoe", name = "view")]
+fn tictactoe_view<S: HasStateApi>(
+    _ctx: &impl HasReceiveContext,
+    host: &impl HasHost<State<S>, StateApiType = S>,
+) -> ReceiveResult<ViewState> {
+    let the_state = host.state();
+    let mut games: collections::BTreeMap<u64, Game> = collections::BTreeMap::new();
+    for (idx, game) in the_state.games.iter() {
+        games.insert(*idx, game.clone());
+    }
+    Ok(ViewState { games })
+}
 
 /// The init function of the contract
 #[init(contract = "tictactoe")]
